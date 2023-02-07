@@ -86,6 +86,7 @@ export function useContentHighlightsContext() {
         ...s.stepperModal,
         isOpen: false,
         highlightTitle: null,
+        titleStepValidationError: null,
         currentSelectedRowIds: {},
       },
     }));
@@ -126,11 +127,19 @@ export function useContentHighlightsContext() {
     }));
   }, [setState]);
 
+  const setCatalogVisibilityAlert = useCallback(({ isOpen }) => {
+    setState(s => ({
+      ...s,
+      catalogVisibilityAlertOpen: isOpen,
+    }));
+  }, [setState]);
+
   return {
     openStepperModal,
     resetStepperModal,
     deleteSelectedRowId,
     setCurrentSelectedRowIds,
     setHighlightTitle,
+    setCatalogVisibilityAlert,
   };
 }
