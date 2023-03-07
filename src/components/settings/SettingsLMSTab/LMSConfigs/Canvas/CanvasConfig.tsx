@@ -29,6 +29,10 @@ import {
   updateFormFieldsAction,
   // @ts-ignore
 } from "../../../../forms/data/actions.ts";
+import {
+  FormFieldValidation,
+} from "../../../../forms/FormContext";
+import { formFieldNames } from "./CanvasConfigAuthorizePage";
 
 export type CanvasConfigCamelCase = {
   canvasAccountId: string;
@@ -61,10 +65,8 @@ export type CanvasConfigSnakeCase = {
 export type CanvasFormConfigProps = {
   enterpriseCustomerUuid: string;
   existingData: CanvasConfigCamelCase;
-  onSubmit: (
-    canvasConfig: CanvasConfigCamelCase,
-    errHandler?: FormWorkflowErrorHandler
-  ) => void;
+  existingConfigNames: string[];
+  onSubmit: (canvasConfig: CanvasConfigCamelCase) => void;
   onClickCancel: (submitted: boolean, status: string) => Promise<boolean>;
 };
 
@@ -75,7 +77,18 @@ export const CanvasFormConfig = ({
   onSubmit,
   onClickCancel,
   existingData,
+  existingConfigNames,
 }: CanvasFormConfigProps): FormWorkflowConfig<CanvasConfigCamelCase> => {
+  const configNames: string[] = existingConfigNames?.filter( (name) => name !== existingData.displayName);
+  const checkForDuplicateNames: FormFieldValidation = {
+    formFieldId: formFieldNames.DISPLAY_NAME,
+    validator: (formFields: CanvasConfigCamelCase) => {
+      return configNames?.includes(formFields.displayName)
+        ? "Display name already taken"
+        : false;
+    },
+  };
+
   const saveChanges = async (
     formFields: CanvasConfigCamelCase,
     errHandler: (errMsg: string) => void
@@ -93,12 +106,18 @@ export const CanvasFormConfig = ({
           transformedConfig,
           existingData.id
         );
-        onSubmit(formFields, errHandler);
+        onSubmit(formFields);
       } catch (error) {
         err = handleErrors(error);
       }
     } else {
-      // TODO: Don't expose option if object not created yet
+      try {
+        transformedConfig.active = false;
+        await LmsApiService.postNewCanvasConfig(transformedConfig);
+        onSubmit(formFields);
+      } catch (error) {
+        err = handleErrors(error);
+      }
     }
 
     if (err) {
@@ -109,6 +128,7 @@ export const CanvasFormConfig = ({
 
   const handleSubmit = async ({
     formFields,
+    formFieldsChanged,
     errHandler,
     dispatch,
   }: FormWorkflowHandlerArgs<CanvasConfigCamelCase>) => {
@@ -118,35 +138,36 @@ export const CanvasFormConfig = ({
     ) as CanvasConfigSnakeCase;
     transformedConfig.enterprise_customer = enterpriseCustomerUuid;
     let err = "";
-
-    if (currentFormFields?.id) {
-      try {
-        transformedConfig.active = existingData.active;
-        const response = await LmsApiService.updateCanvasConfig(
-          transformedConfig,
-          existingData.id
-        );
-        currentFormFields = camelCaseDict(
-          response.data
-        ) as CanvasConfigCamelCase;
-        onSubmit(currentFormFields, errHandler);
-        dispatch?.(updateFormFieldsAction({ formFields: currentFormFields }));
-      } catch (error) {
-        err = handleErrors(error);
-      }
-    } else {
-      try {
-        transformedConfig.active = false;
-        const response = await LmsApiService.postNewCanvasConfig(
-          transformedConfig
-        );
-        currentFormFields = camelCaseDict(
-          response.data
-        ) as CanvasConfigCamelCase;
-        onSubmit(currentFormFields, errHandler);
-        dispatch?.(updateFormFieldsAction({ formFields: currentFormFields }));
-      } catch (error) {
-        err = handleErrors(error);
+    if (formFieldsChanged) {
+      if (currentFormFields?.id) {
+        try {
+          transformedConfig.active = existingData.active;
+          const response = await LmsApiService.updateCanvasConfig(
+            transformedConfig,
+            existingData.id
+          );
+          currentFormFields = camelCaseDict(
+            response.data
+          ) as CanvasConfigCamelCase;
+          onSubmit(currentFormFields);
+          dispatch?.(updateFormFieldsAction({ formFields: currentFormFields }));
+        } catch (error) {
+          err = handleErrors(error);
+        }
+      } else {
+        try {
+          transformedConfig.active = false;
+          const response = await LmsApiService.postNewCanvasConfig(
+            transformedConfig
+          );
+          currentFormFields = camelCaseDict(
+            response.data
+          ) as CanvasConfigCamelCase;
+          onSubmit(currentFormFields);
+          dispatch?.(updateFormFieldsAction({ formFields: currentFormFields }));
+        } catch (error) {
+          err = handleErrors(error);
+        }
       }
     }
     if (err) {
@@ -169,7 +190,6 @@ export const CanvasFormConfig = ({
     errHandler,
     dispatch,
   }: FormWorkflowHandlerArgs<CanvasConfigCamelCase>) => {
-    // Return immediately if already authorized
     if (formFields?.id) {
       let err = "";
       try {
@@ -205,7 +225,7 @@ export const CanvasFormConfig = ({
     {
       index: 0,
       formComponent: CanvasConfigAuthorizePage,
-      validations,
+      validations: validations.concat([checkForDuplicateNames]),
       stepName: "Authorize",
       saveChanges,
       nextButtonConfig: (formFields: CanvasConfigCamelCase) => {
